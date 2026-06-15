@@ -8,7 +8,7 @@ Accurate Cobb angle measurement is fundamental to scoliosis assessment and follo
 
 ## Framework
 
-![Structured multiscale sparse decoding framework](assets/framework.png)
+![Structured multiscale sparse decoding framework](assets/framework.jpg)
 
 Structured multiscale sparse decoding framework. The model combines deep-context feature gating, centerline-guided structural prior learning, centerline-guided coarse localization, vertebra-level chain refinement, and high-resolution candidate gathering before decoding vertebral points and Cobb-related geometry.
 
