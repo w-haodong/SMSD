@@ -21,10 +21,12 @@ Pretrained checkpoints are provided through Baidu Netdisk:
 
 The shared package contains two checkpoint folders:
 
-| Dataset | Checkpoint path |
-| --- | --- |
-| `fh_data_bs` | `weights/fh_data_bs/latest_model.pth` |
-| `fh_data_lc` | `weights/fh_data_lc/latest_model.pth` |
+| Paper setting | Checkpoint folder | Checkpoint path |
+| --- | --- | --- |
+| `AASCE-98` | `fh_data_bs` | `weights/fh_data_bs/latest_model.pth` |
+| `Clinical-150` | `fh_data_lc` | `weights/fh_data_lc/latest_model.pth` |
+
+In other words, the `fh_data_bs` checkpoint corresponds to the `AASCE-98` setting reported in the paper, while the `fh_data_lc` checkpoint corresponds to the `Clinical-150` setting.
 
 After downloading, place the files in the repository as:
 
