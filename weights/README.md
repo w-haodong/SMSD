@@ -4,8 +4,8 @@ Place downloaded model checkpoints in this folder before running inference or ev
 
 Expected structure:
 
-- `weights/fh_data_bs/latest_model.pth`
-- `weights/fh_data_lc/latest_model.pth`
+- `weights/fh_data_bs/latest_model.pth` for the `AASCE-98` setting in the paper
+- `weights/fh_data_lc/latest_model.pth` for the `Clinical-150` setting in the paper
 
 Example:
 
