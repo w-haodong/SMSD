@@ -175,7 +175,7 @@ Trained SMSD checkpoints are provided through Baidu Netdisk:
 The shared package contains two checkpoint folders:
 
 | Paper setting | Checkpoint folder | Checkpoint path |
-| --- | --- |
+| --- | --- | --- |
 | `AASCE-98` | `fh_data_bs` | `weights/fh_data_bs/latest_model.pth` |
 | `Clinical-150` | `fh_data_lc` | `weights/fh_data_lc/latest_model.pth` |
 
