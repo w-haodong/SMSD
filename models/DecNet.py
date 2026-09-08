@@ -262,11 +262,19 @@ class SemanticP5Bias(nn.Module):
 
 
 class ExplicitAxisRepresentation(nn.Module):
-    def __init__(self, channels: int, min_width: float = 0.035, max_width: float = 0.36, keep_ratio: float = 0.60):
+    def __init__(
+        self,
+        channels: int,
+        min_width: float = 0.035,
+        max_width: float = 0.36,
+        keep_ratio: float = 0.60,
+        use_sparse_row_attention: bool = True,
+    ):
         super().__init__()
         self.min_width = float(min_width)
         self.max_width = float(max_width)
         self.keep_ratio = float(min(0.95, max(0.20, keep_ratio)))
+        self.use_sparse_row_attention = bool(use_sparse_row_attention)
 
         self.pre = nn.Sequential(
             ConvLNAct(channels, channels, k=1, s=1, p=0),
@@ -367,7 +375,12 @@ class ExplicitAxisRepresentation(nn.Module):
         )
         row_support_gate = torch.maximum(row_hard, 0.55 * row_soft_pre).clamp(0.0, 1.0)
         row_policy = (0.12 + 0.88 * row_support_gate).squeeze(-1).transpose(1, 2).contiguous()
-        row_attn_out, row_attn_map = self.row_attn(self.row_norm(row_tokens), row_policy, return_attn=True)
+        attention_policy = row_policy if self.use_sparse_row_attention else None
+        row_attn_out, row_attn_map = self.row_attn(
+            self.row_norm(row_tokens),
+            attention_policy,
+            return_attn=True,
+        )
         row_context = row_tokens + row_attn_out
         row_context = row_context + self.row_ffn(row_context)
 
@@ -480,6 +493,7 @@ class AxisCanonicalStripSampler(nn.Module):
         center: torch.Tensor,
         width: torch.Tensor,
         width_scale: float = 1.0,
+        use_centerline_guidance: bool = True,
     ) -> torch.Tensor:
         _, _, height, _ = feat.shape
         offsets = torch.linspace(
@@ -489,7 +503,14 @@ class AxisCanonicalStripSampler(nn.Module):
             device=feat.device,
             dtype=feat.dtype,
         ).view(1, 1, 1, self.num_samples)
-        x_grid = center + offsets * width * float(width_scale)
+        if use_centerline_guidance:
+            x_grid = center + offsets * width * float(width_scale)
+        else:
+            # The unguided control samples every row uniformly over the full
+            # image width.  It intentionally ignores the predicted center and
+            # band width instead of replacing them with a different learned
+            # prior.
+            x_grid = offsets.expand(feat.size(0), 1, height, self.num_samples)
         y_grid = torch.linspace(
             -1.0,
             1.0,
@@ -652,10 +673,24 @@ class LocalCandidateSparseAttention(nn.Module):
 
 
 class CanonicalStripContext(nn.Module):
-    def __init__(self, channels: int, num_samples: int = 17, keep_ratio: float = 0.7, wide_scale: float = 1.7):
+    def __init__(
+        self,
+        channels: int,
+        num_samples: int = 17,
+        keep_ratio: float = 0.7,
+        wide_scale: float = 1.7,
+        use_centerline_guidance: bool = True,
+        use_axis_band_support: bool = True,
+        use_sparse_row_attention: bool = True,
+        use_corridor_projection: bool = True,
+    ):
         super().__init__()
         self.keep_ratio = float(min(0.95, max(0.25, keep_ratio)))
         self.wide_scale = float(max(1.2, wide_scale))
+        self.use_centerline_guidance = bool(use_centerline_guidance)
+        self.use_axis_band_support = bool(use_axis_band_support)
+        self.use_sparse_row_attention = bool(use_sparse_row_attention)
+        self.use_corridor_projection = bool(use_corridor_projection)
         self.strip_sampler = AxisCanonicalStripSampler(num_samples=num_samples)
 
         self.guide_proj = nn.Sequential(
@@ -722,21 +757,33 @@ class CanonicalStripContext(nn.Module):
         keep_policy = keep_policy * prev_policy
         keep_policy = keep_policy + (1.0 - keep_policy) * 0.035
 
-        attn_out, attn_map = self.token_attn(self.token_norm(tokens), keep_policy, return_attn=True)
+        attention_policy = keep_policy if self.use_sparse_row_attention else None
+        attn_out, attn_map = self.token_attn(
+            self.token_norm(tokens),
+            attention_policy,
+            return_attn=True,
+        )
         mixed_tokens = tokens + attn_out
         mixed_tokens = mixed_tokens + self.token_ffn(mixed_tokens)
         axial_logits = self.axial_head(mixed_tokens).transpose(1, 2).unsqueeze(-1)
         attn_response = attn_map.mean(dim=1).unsqueeze(-1)
         return mixed_tokens, axial_logits, strip_attn, keep_policy, keep_prob, attn_response, attn_map
 
-    @staticmethod
-    def _render_row_tokens(tokens: torch.Tensor, center: torch.Tensor, width: torch.Tensor, out_w: int) -> torch.Tensor:
+    def _render_row_tokens(
+        self,
+        tokens: torch.Tensor,
+        center: torch.Tensor,
+        width: torch.Tensor,
+        out_w: int,
+    ) -> torch.Tensor:
         amplitude = tokens.transpose(1, 2).unsqueeze(-1)
+        if not self.use_axis_band_support:
+            return amplitude.expand(-1, -1, -1, out_w)
         spread = render_axis_gaussian(center, width * 0.95 + 0.020, amplitude.new_ones(center.shape), out_w, min_sigma=0.02)
         return amplitude * spread
 
-    @staticmethod
     def _render_strip_weights(
+        self,
         weights: torch.Tensor,
         center: torch.Tensor,
         width: torch.Tensor,
@@ -744,6 +791,9 @@ class CanonicalStripContext(nn.Module):
         width_scale: float,
     ) -> torch.Tensor:
         bsz, _, height, num_samples = weights.shape
+        if not self.use_axis_band_support:
+            row_weight = weights.mean(dim=-1, keepdim=True)
+            return row_weight.expand(bsz, 1, height, out_w)
         offsets = torch.linspace(
             -1.0,
             1.0,
@@ -809,12 +859,48 @@ class CanonicalStripContext(nn.Module):
         context = (axis_feat * context_weight).sum(dim=(-2, -1), keepdim=False) / context_weight.sum(dim=(-2, -1), keepdim=False).clamp_min(1e-6)
         context = context.unsqueeze(1)
 
-        narrow_strip = self.strip_sampler(fused, axis_center, axis_width, width_scale=1.0)
-        wide_strip = self.strip_sampler(fused, axis_center, axis_width, width_scale=self.wide_scale)
-        narrow_band = self.strip_sampler(band, axis_center, axis_width, width_scale=1.0)
-        wide_band = self.strip_sampler(band, axis_center, axis_width, width_scale=self.wide_scale)
-        narrow_p4_prior = self.strip_sampler(p4_prior_map, axis_center, axis_width, width_scale=1.0)
-        wide_p4_prior = self.strip_sampler(p4_prior_map, axis_center, axis_width, width_scale=self.wide_scale)
+        narrow_strip = self.strip_sampler(
+            fused,
+            axis_center,
+            axis_width,
+            width_scale=1.0,
+            use_centerline_guidance=self.use_centerline_guidance,
+        )
+        wide_strip = self.strip_sampler(
+            fused,
+            axis_center,
+            axis_width,
+            width_scale=self.wide_scale,
+            use_centerline_guidance=self.use_centerline_guidance,
+        )
+        narrow_band = self.strip_sampler(
+            band,
+            axis_center,
+            axis_width,
+            width_scale=1.0,
+            use_centerline_guidance=self.use_centerline_guidance,
+        )
+        wide_band = self.strip_sampler(
+            band,
+            axis_center,
+            axis_width,
+            width_scale=self.wide_scale,
+            use_centerline_guidance=self.use_centerline_guidance,
+        )
+        narrow_p4_prior = self.strip_sampler(
+            p4_prior_map,
+            axis_center,
+            axis_width,
+            width_scale=1.0,
+            use_centerline_guidance=self.use_centerline_guidance,
+        )
+        wide_p4_prior = self.strip_sampler(
+            p4_prior_map,
+            axis_center,
+            axis_width,
+            width_scale=self.wide_scale,
+            use_centerline_guidance=self.use_centerline_guidance,
+        )
         narrow_policy = (0.62 * narrow_band + 0.38 * narrow_p4_prior).clamp(0.0, 1.0)
         wide_policy = (0.66 * wide_band + 0.34 * wide_p4_prior).clamp(0.0, 1.0)
 
@@ -842,13 +928,16 @@ class CanonicalStripContext(nn.Module):
         sparse_tokens = fused_tokens * sparse_weight * vis_row
         token_map = self._render_row_tokens(sparse_tokens, axis_center, axis_width, out_w=fused.size(-1))
         keep_scalar = keep_support.transpose(1, 2).unsqueeze(-1)
-        keep_support_map = render_axis_gaussian(
-            axis_center,
-            (axis_width * 0.90 + 0.012).clamp(min=0.018, max=0.075),
-            keep_scalar,
-            fused.size(-1),
-            min_sigma=0.015,
-        )
+        if self.use_axis_band_support:
+            keep_support_map = render_axis_gaussian(
+                axis_center,
+                (axis_width * 0.90 + 0.012).clamp(min=0.018, max=0.075),
+                keep_scalar,
+                fused.size(-1),
+                min_sigma=0.015,
+            )
+        else:
+            keep_support_map = keep_scalar.expand(-1, -1, -1, fused.size(-1))
         keep_support_map = F.avg_pool2d(
             keep_support_map,
             kernel_size=(3, 3),
@@ -857,7 +946,12 @@ class CanonicalStripContext(nn.Module):
             count_include_pad=False,
         ).clamp(0.0, 1.0) * vis_map
         token_map = token_map * (0.65 + 0.35 * structure_gate) * (0.35 + 0.65 * keep_support_map)
-        chain_update = self.out(torch.cat([fused, token_map, axis_feat], dim=1))
+        chain_update_full = self.out(torch.cat([fused, token_map, axis_feat], dim=1))
+        chain_update = (
+            chain_update_full
+            if self.use_corridor_projection
+            else chain_update_full * 0.0
+        )
         chain_gate = keep_support_map * (0.60 + 0.40 * structure_gate)
         chain_selected_gate = chain_gate.clamp(0.0, 1.0).pow(1.4)
         chain_selected_readout = F.max_pool2d(
@@ -871,14 +965,43 @@ class CanonicalStripContext(nn.Module):
         chain_candidate = fused + 0.45 * chain_update * (0.68 + 0.32 * structure_gate)
         chain_feat = p3 + (chain_candidate - p3) * chain_residual_gate
         chain_feat = chain_feat * chain_clean_gate
-        token_score_raw = render_axis_gaussian(
-            axis_center,
-            axis_width * 0.92 + 0.014,
-            (0.72 * narrow_keep_prob + 0.28 * p4_prior_row).transpose(1, 2).unsqueeze(-1) * axis_visible,
-            fused.size(-1),
-            min_sigma=0.014,
+        token_score_amplitude = (
+            (0.72 * narrow_keep_prob + 0.28 * p4_prior_row)
+            .transpose(1, 2)
+            .unsqueeze(-1)
+            * axis_visible
         )
+        if self.use_axis_band_support:
+            token_score_raw = render_axis_gaussian(
+                axis_center,
+                axis_width * 0.92 + 0.014,
+                token_score_amplitude,
+                fused.size(-1),
+                min_sigma=0.014,
+            )
+        else:
+            token_score_raw = token_score_amplitude.expand(-1, -1, -1, fused.size(-1))
         token_score_effective = (token_score_raw * keep_support_map).clamp(0.0, 1.0)
+        token_attention_amplitude = narrow_token_attn.transpose(1, 2).unsqueeze(-1) * axis_visible
+        axial_response_amplitude = torch.sigmoid(narrow_axial_logits) * axis_visible
+        if self.use_axis_band_support:
+            token_attention_debug = render_axis_gaussian(
+                axis_center,
+                axis_width * 0.92 + 0.014,
+                token_attention_amplitude,
+                fused.size(-1),
+                min_sigma=0.014,
+            )
+            axial_response_debug = render_axis_gaussian(
+                axis_center,
+                axis_width * 0.80 + 0.012,
+                axial_response_amplitude,
+                fused.size(-1),
+                min_sigma=0.012,
+            )
+        else:
+            token_attention_debug = token_attention_amplitude.expand(-1, -1, -1, fused.size(-1))
+            axial_response_debug = axial_response_amplitude.expand(-1, -1, -1, fused.size(-1))
         debug = {
             "structure_gate": structure_gate.detach(),
             "p4_sparse_prior": p4_prior_map.detach(),
@@ -892,21 +1015,9 @@ class CanonicalStripContext(nn.Module):
             "token_keep": chain_clean_gate.detach(),
             "token_score": token_score_effective.detach(),
             "token_score_raw": token_score_raw.detach(),
-            "token_attention": render_axis_gaussian(
-                axis_center,
-                axis_width * 0.92 + 0.014,
-                narrow_token_attn.transpose(1, 2).unsqueeze(-1) * axis_visible,
-                fused.size(-1),
-                min_sigma=0.014,
-            ).detach(),
+            "token_attention": token_attention_debug.detach(),
             "token_attention_matrix": narrow_attn_matrix.unsqueeze(1).detach(),
-            "axial_response": render_axis_gaussian(
-                axis_center,
-                axis_width * 0.80 + 0.012,
-                torch.sigmoid(narrow_axial_logits) * axis_visible,
-                fused.size(-1),
-                min_sigma=0.012,
-            ).detach(),
+            "axial_response": axial_response_debug.detach(),
         }
         return chain_feat, chain_clean_gate, narrow_axial_logits, debug
 
@@ -1089,6 +1200,67 @@ class StructuredSpineDecoder(nn.Module):
 
         self.decoder_dim = int(getattr(args, "decoder_dim", 128))
         self.head_dim = int(getattr(args, "head_dim", 128))
+        self.use_semantic_gating = bool(
+            getattr(
+                args,
+                "ablation_use_semantic_gating",
+                getattr(args, "decoder_use_semantic_gating", True),
+            )
+        )
+        self.use_centerline_guidance = bool(
+            getattr(
+                args,
+                "ablation_use_centerline_guidance",
+                getattr(
+                    args,
+                    "decoder_use_centerline_guidance",
+                    getattr(args, "decoder_use_centerline", True),
+                ),
+            )
+        )
+        self.use_axis_band_support = bool(
+            getattr(
+                args,
+                "ablation_use_axis_band_support",
+                getattr(args, "decoder_use_axis_band_support", True),
+            )
+        )
+        dense_row_attention = bool(getattr(args, "decoder_dense_row_attention", False))
+        self.use_sparse_row_attention = bool(
+            getattr(
+                args,
+                "ablation_use_sparse_row_attention",
+                getattr(args, "decoder_use_sparse_row_attention", not dense_row_attention),
+            )
+        )
+        self.use_corridor_projection = bool(
+            getattr(
+                args,
+                "ablation_use_corridor_projection",
+                getattr(args, "decoder_use_corridor_projection", True),
+            )
+        )
+        self.use_p4_feature = bool(
+            getattr(
+                args,
+                "ablation_use_p4_feature",
+                getattr(args, "decoder_use_p4_feature", True),
+            )
+        )
+        self.use_p3_feature = bool(
+            getattr(
+                args,
+                "ablation_use_p3_feature",
+                getattr(args, "decoder_use_p3_feature", True),
+            )
+        )
+        self.use_p2_feature = bool(
+            getattr(
+                args,
+                "ablation_use_p2_feature",
+                getattr(args, "decoder_use_p2_feature", True),
+            )
+        )
 
         self.scale_projectors = nn.ModuleList([ScaleProjector(in_ch, self.decoder_dim) for in_ch in self.in_channels_list])
         self.semantic_p5 = SemanticP5Bias(self.decoder_dim)
@@ -1097,12 +1269,17 @@ class StructuredSpineDecoder(nn.Module):
             min_width=float(getattr(args, "decoder_axis_min_width_ratio", 0.035)),
             max_width=float(getattr(args, "decoder_axis_max_width_ratio", 0.36)),
             keep_ratio=float(getattr(args, "decoder_p4_row_keep_ratio", 0.60)),
+            use_sparse_row_attention=self.use_sparse_row_attention,
         )
         self.strip_context = CanonicalStripContext(
             self.decoder_dim,
             num_samples=int(getattr(args, "decoder_strip_samples", 17)),
             keep_ratio=float(getattr(args, "decoder_strip_keep_ratio", 0.70)),
             wide_scale=float(getattr(args, "decoder_strip_wide_context_scale", 1.70)),
+            use_centerline_guidance=self.use_centerline_guidance,
+            use_axis_band_support=(self.use_centerline_guidance and self.use_axis_band_support),
+            use_sparse_row_attention=self.use_sparse_row_attention,
+            use_corridor_projection=self.use_corridor_projection,
         )
         self.p4_bridge_fuse = nn.Sequential(
             ConvLNAct(self.decoder_dim * 2 + 3, self.decoder_dim, k=1, s=1, p=0),
@@ -1165,8 +1342,15 @@ class StructuredSpineDecoder(nn.Module):
         p2 = self._resize_to(p2_native, target_hw)
         p3 = self._resize_to(p3_native, target_hw)
         p4 = self._resize_to(p4_native, target_hw)
+        if not self.use_p2_feature:
+            p2 = p2 * 0.0
+        if not self.use_p3_feature:
+            p3 = p3 * 0.0
+        if not self.use_p4_feature:
+            p4 = p4 * 0.0
 
-        p4_mod, p5_sem_gate = self.semantic_p5(p4, p5_native)
+        semantic_p4, p5_sem_gate = self.semantic_p5(p4, p5_native)
+        p4_mod = semantic_p4 if self.use_semantic_gating else p4
         axis_feat_raw, axis_state = self.axis_module(p4_mod)
         raw_guide_centerline = axis_state["centerline_prob"]
         raw_guide_band = axis_state["band_prob"]
@@ -1184,9 +1368,36 @@ class StructuredSpineDecoder(nn.Module):
         guide_centerline = (raw_guide_centerline * centerline_clean_gate).clamp(0.0, 1.0)
         guide_band = (raw_guide_band * band_clean_gate).clamp(0.0, 1.0)
         axis_feat = axis_feat_raw * sparse_feedback_gate
+        supervised_centerline = guide_centerline
+        supervised_band = guide_band
+        pred_centerline_map = _logit_from_prob(supervised_centerline)
+
+        use_spatial_support = self.use_centerline_guidance and self.use_axis_band_support
+        if not use_spatial_support:
+            # Preserve longitudinal row selection while removing the horizontal
+            # centerline/band masks.  Ones are the neutral element for all
+            # downstream multiplicative guide terms; zeros would suppress the
+            # heatmap through log(center_decay) and would not be a fair ablation.
+            row_only_prior = (
+                axis_state["row_support"] * axis_state["visible"]
+            ).expand(-1, -1, -1, p4.size(-1))
+            p4_sparse_prior = row_only_prior.clamp(0.0, 1.0)
+            guide_centerline = torch.ones_like(guide_centerline)
+            guide_band = torch.ones_like(guide_band)
+            axis_feat = p4_mod
+
+        if self.use_centerline_guidance:
+            guide_axis_center = axis_state["center"]
+            guide_axis_width = axis_state["width"]
+        else:
+            # The strip sampler ignores these neutral values in unguided mode;
+            # they keep the remaining renderer/debug interfaces shape-stable.
+            guide_axis_center = torch.zeros_like(axis_state["center"])
+            guide_axis_width = torch.ones_like(axis_state["width"])
+        guide_axis_visible = axis_state["visible"]
+
         guide_struct = torch.cat([guide_centerline, guide_band, guide_confidence], dim=1)
         guide_valid = guide_struct[:, 2:3]
-        pred_centerline_map = _logit_from_prob(guide_centerline)
         # P4 residual writes must follow the selected sparse support, not the wider
         # centerline/band prior. Otherwise unselected cranial/tail responses leak into res.
         p4_bridge_gate = p4_sparse_prior.clamp(0.0, 1.0).pow(1.5) * guide_valid
@@ -1211,9 +1422,9 @@ class StructuredSpineDecoder(nn.Module):
             p3_seed,
             p4_bridge,
             guide_struct,
-            axis_state["center"],
-            axis_state["width"],
-            axis_state["visible"],
+            guide_axis_center,
+            guide_axis_width,
+            guide_axis_visible,
             p4_sparse_prior,
         )
         structural_base_logits, render_feat, heatmap_debug = self.heatmap_renderer(
@@ -1221,10 +1432,16 @@ class StructuredSpineDecoder(nn.Module):
             chain_feat,
             guide_struct,
             chain_axial_logits,
-            axis_state["center"],
-            axis_state["width"],
-            axis_state["visible"],
+            guide_axis_center,
+            guide_axis_width,
+            guide_axis_visible,
         )
+        if not use_spatial_support:
+            # In this control the center coordinate may still guide corridor
+            # sampling (axis/band-support ablation), but no Gaussian support is
+            # rendered into the 2-D prediction stream.
+            structural_base_logits = structural_base_logits * 0.0
+            render_feat = render_feat * 0.0
         center_feat = self.center_fuse(torch.cat([p4_bridge, axis_feat, chain_feat, guide_struct], dim=1))
         center_feat = center_feat + 0.20 * render_feat * (0.15 + 0.85 * guide_band)
         p4_centerline_prior = F.avg_pool2d(
@@ -1313,9 +1530,9 @@ class StructuredSpineDecoder(nn.Module):
             "pred_corner_offsets": pred_corner_offsets,
             "pred_centerline_map": pred_centerline_map,
             "pred_axis_visible": axis_state["row_validity"],
-            "pred_band_map": guide_band,
+            "pred_band_map": supervised_band,
             "pred_p4_row_visible": axis_state["visible"],
-            "pred_centerline_row_visible": guide_centerline.amax(dim=-1, keepdim=True),
+            "pred_centerline_row_visible": supervised_centerline.amax(dim=-1, keepdim=True),
             "pred_base_row_visible": torch.sigmoid(base_hm_logits).amax(dim=-1, keepdim=True),
             "pred_global_row_visible": torch.sigmoid(pred_global_hm).amax(dim=-1, keepdim=True),
             "pred_p3_row_visible": chain_gate_p3.amax(dim=-1, keepdim=True),

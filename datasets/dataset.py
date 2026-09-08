@@ -221,9 +221,13 @@ class Dataset(Dataset):
     def __init__(self, args, phase='train', domain=None):
         super().__init__()
         self.args = args
-        self.phase = phase
+        self.phase = str(phase).strip().lower()
+        if self.phase not in {'train', 'val', 'test'}:
+            raise ValueError(
+                f"Unsupported dataset phase: {phase!r}. Expected train, val, or test."
+            )
 
-        self.root_dir = os.path.join(args.data_dir, phase)
+        self.root_dir = os.path.join(args.data_dir, self.phase)
         self.image_dir = os.path.join(self.root_dir, 'images')
         self.label_dir = os.path.join(self.root_dir, 'labels')
 

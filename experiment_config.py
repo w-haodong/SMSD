@@ -15,10 +15,14 @@ DEFAULT_INPUT_SIZE = (1280, 512)
 DATASET_INPUT_SIZES = {
     "fh_data_lc": (1664, 512),
     "fh_data_bs": (1280, 512),
+    "aasce_128": (1280, 512),
+    "aasce_98": (1280, 512),
+    "clinical_150": (1664, 512),
 }
 
-# Eval accepts "val", "test", "val,test", "test,val", "both", or "all".
-DEFAULT_EVAL_DATA = os.environ.get("SCOLIOSIS_EVAL_DATA", "val,test")
+# Final evaluation is reserved for the held-out test split. Validation is
+# handled separately by the train/val workflow in ``main.py``.
+DEFAULT_EVAL_DATA = os.environ.get("SCOLIOSIS_EVAL_DATA", "test")
 
 
 def _norm_abs(path: str) -> str:
@@ -52,7 +56,7 @@ def default_img_dir() -> str:
 
 
 def default_eval_data() -> str:
-    return str(DEFAULT_EVAL_DATA).strip() or "val,test"
+    return str(DEFAULT_EVAL_DATA).strip() or "test"
 
 
 def default_num_epoch() -> int:

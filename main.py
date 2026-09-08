@@ -60,7 +60,7 @@ def _hrnet_profile(variant: str):
 
 
 def _apply_internal_profile(args):
-    args.log_schema = "release_infer_only"
+    args.log_schema = "public_train_val_then_test"
     args.brief_init = True
     args.decoder_dim = 128
     args.head_dim = 128
@@ -113,17 +113,42 @@ def _apply_internal_profile(args):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Lightweight public release for ours_g")
-    parser.add_argument("--phase", choices=["predict", "eval"], default="predict")
+    parser = argparse.ArgumentParser(description="Public training and evaluation release for SMSD")
+    parser.add_argument(
+        "--phase",
+        choices=["train", "eval", "predict"],
+        default="predict",
+        help=(
+            "train uses train/ for optimization and val/ for monitoring; "
+            "eval is reserved for the held-out test/ split after training"
+        ),
+    )
     parser.add_argument("--image_dir", type=str, default="")
     parser.add_argument("--data_dir", type=str, default="")
-    parser.add_argument("--split", choices=["val", "test"], default="test")
+    parser.add_argument(
+        "--split",
+        choices=["test"],
+        default="test",
+        help="The eval command is intentionally restricted to the held-out test split.",
+    )
     parser.add_argument("--dataset_name", type=str, default="fh_data_bs")
-    parser.add_argument("--checkpoint", type=str, default=os.path.join("weights", "latest_model.pth"))
-    parser.add_argument("--output_dir", type=str, default=os.path.join("outputs", "predict"))
+    parser.add_argument("--checkpoint", type=str, default="")
+    parser.add_argument("--checkpoint_dir", type=str, default="")
+    parser.add_argument("--resume_checkpoint", type=str, default="")
+    parser.add_argument("--output_dir", type=str, default="")
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=1)
+    parser.add_argument("--val_batch_size", type=int, default=1)
+    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--lr_gamma", type=float, default=0.98)
+    parser.add_argument("--accumulation_steps", type=int, default=1)
+    parser.add_argument("--grad_clip", type=float, default=5.0)
+    parser.add_argument("--val_interval", type=int, default=1)
+    parser.add_argument("--save_interval", type=int, default=20)
+    parser.add_argument("--seed", type=int, default=317)
     parser.add_argument("--max_samples", type=int, default=0)
     parser.add_argument("--save_mat", action="store_true")
     parser.add_argument("--disable_amp", action="store_true")
@@ -139,17 +164,35 @@ def parse_args():
 
     if args.phase == "predict" and not args.image_dir:
         parser.error("--image_dir is required when --phase predict")
-    if args.phase == "eval" and not args.data_dir:
-        parser.error("--data_dir is required when --phase eval")
+    if args.phase in {"train", "eval"} and not args.data_dir:
+        parser.error(f"--data_dir is required when --phase {args.phase}")
+    if args.epochs < 1:
+        parser.error("--epochs must be positive")
+    if args.val_interval < 1:
+        parser.error("--val_interval must be positive")
+    if args.save_interval < 1:
+        parser.error("--save_interval must be positive")
+    if args.accumulation_steps < 1:
+        parser.error("--accumulation_steps must be positive")
 
     args.work_dir = ROOT
-    args.checkpoint = os.path.abspath(os.path.normpath(args.checkpoint))
-    args.output_dir = os.path.abspath(os.path.normpath(args.output_dir))
     if args.image_dir:
         args.image_dir = os.path.abspath(os.path.normpath(args.image_dir))
     if args.data_dir:
         args.data_dir = os.path.abspath(os.path.normpath(args.data_dir))
         args.dataset_name = os.path.basename(args.data_dir.rstrip("\\/")) or args.dataset_name
+
+    if not args.checkpoint:
+        args.checkpoint = os.path.join(ROOT, "weights", args.dataset_name, "latest_model.pth")
+    if not args.checkpoint_dir:
+        args.checkpoint_dir = os.path.join(ROOT, "weights", args.dataset_name)
+    if not args.output_dir:
+        args.output_dir = os.path.join(ROOT, "outputs", args.phase)
+    args.checkpoint = os.path.abspath(os.path.normpath(args.checkpoint))
+    args.checkpoint_dir = os.path.abspath(os.path.normpath(args.checkpoint_dir))
+    args.output_dir = os.path.abspath(os.path.normpath(args.output_dir))
+    if args.resume_checkpoint:
+        args.resume_checkpoint = os.path.abspath(os.path.normpath(args.resume_checkpoint))
 
     if args.input_h <= 0 or args.input_w <= 0:
         input_h, input_w = input_size_for_dataset(args.dataset_name)
@@ -488,9 +531,14 @@ def run_eval(args):
 
 def main():
     args = parse_args()
-    if args.phase == "predict":
+    if args.phase == "train":
+        from operation.train import run_train
+
+        summary = run_train(args)
+    elif args.phase == "predict":
         summary = run_predict(args)
     else:
+        args.split = "test"
         summary = run_eval(args)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
