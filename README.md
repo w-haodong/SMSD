@@ -19,6 +19,7 @@ This repository provides the training, validation, inference, and held-out test 
   - [Landmark decoding settings](#landmark-decoding-settings)
 - [Evaluation](#evaluation)
   - [PT, MT, and TL Cobb-angle computation](#pt-mt-and-tl-cobb-angle-computation)
+- [AASCE-98 Test Annotations](#aasce-98-test-annotations)
 - [Expected Data Layout](#expected-data-layout)
   - [Clinical-150 cohort and acquisition summary](#clinical-150-cohort-and-acquisition-summary)
 
@@ -384,6 +385,10 @@ a_1=\arg\max_{i\leq a_0}\theta_{ia_0}.
 $$
 
 If the dominant pair is located in the cranial half of the decoded trace, the triplet is $(\theta_{a_0a},\theta_{ab},\theta_{bb_0})$; otherwise it is $(\theta_{a_1a_0},\theta_{a_0a},\theta_{ab})$. The one-sided/two-sided decision uses the ordered upper- and lower-endplate midpoint trace and a numerical tolerance of $10^{-4}$. The same procedure is applied to predicted and reference landmarks. The returned PT, MT, and TL angles are expressed in degrees and rounded to two decimal places before export. The complete branch logic is implemented in [`cobb_angle_calc`](eval_cobb_calm.py#L171-L337), and the three predicted/reference values are exported by [`run_eval`](main.py#L453-L499).
+
+## AASCE-98 Test Annotations
+
+The [AASCE-98 annotation release](annotations/AASCE-98/) provides 98 study-curated MAT files for the original AASCE challenge test images. Each file stores the 68 final vertebral corner coordinates in the original image coordinate system. Only annotations are distributed; images and visualizations are not included. See the release notes for point order, coordinate conventions, and annotation provenance.
 
 ## Expected Data Layout
 
