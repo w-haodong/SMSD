@@ -85,12 +85,12 @@ The released profile predicts a raw scale $\omega_y\in[0.035,0.24]$ in the norma
 
 $$
 \sigma_y^{\mathrm{center}}
-=\operatorname{clip}(0.16\omega_y+0.010,\,0.010,\,0.042),
+=\mathrm{clip}(0.16\omega_y+0.010,\,0.010,\,0.042),
 $$
 
 $$
 \sigma_y^{\mathrm{band}}
-=\operatorname{clip}(0.26\omega_y+0.016,\,0.026,\,0.070).
+=\mathrm{clip}(0.26\omega_y+0.016,\,0.026,\,0.070).
 $$
 
 Under the released range of $\omega_y$, the reachable centerline-support width is $[0.0156,0.042]$; the value $0.010$ in the first expression is the clipping lower bound. The reachable band width is $[0.026,0.070]$. The first width defines the narrow centerline support, while the second defines the wider structural corridor and the scale used by corridor sampling. Structural injection is continuous through these Gaussian supports; these widths are support scales, not hard horizontal crop boundaries. The implementation is in [`render_axis_gaussian`](models/DecNet.py#L97-L106) and [`ExplicitAxisRepresentation`](models/DecNet.py#L264-L469).
@@ -119,7 +119,7 @@ The corridor weights and row token are then
 
 $$
 \pi_{y,s}^{q}
-=\operatorname{softmax}_{s}\!\left(w^\top f_{y,s}^{q}+b_{y,s}^{q}\right),
+=\mathrm{softmax}_{s}\!\left(w^\top f_{y,s}^{q}+b_{y,s}^{q}\right),
 \qquad
 c_y^{q}=\sum_{s=1}^{17}\pi_{y,s}^{q}f_{y,s}^{q}.
 $$
@@ -363,7 +363,7 @@ The clipped pairwise angle is
 
 $$
 \theta_{ij}=\frac{180}{\pi}\arccos\left(
-\operatorname{clip}_{[0,1]}
+\mathrm{clip}_{[0,1]}
 \frac{u_i^{\mathsf T}u_j}{\lVert u_i\rVert_2\lVert u_j\rVert_2+10^{-6}}
 \right),
 $$
