@@ -2,6 +2,26 @@
 
 This repository provides the training, validation, inference, and held-out test evaluation code for our structured multiscale sparse decoding framework for vertebral point detection in scoliosis radiographs.
 
+## Contents
+
+- [Abstract](#abstract)
+- [Framework](#framework)
+- [Method-to-Code Map](#method-to-code-map)
+  - [Core operators and implementation details](#core-operators-and-implementation-details)
+- [Train, Validation, and Test Separation](#train-validation-and-test-separation)
+- [Trained SMSD Checkpoints](#trained-smsd-checkpoints)
+- [Repository Structure](#repository-structure)
+- [Installation](#installation)
+- [Training with Validation](#training-with-validation)
+  - [Canonical training profile](#canonical-training-profile)
+- [Inference](#inference)
+  - [Single-image data path](#single-image-data-path)
+  - [Landmark decoding settings](#landmark-decoding-settings)
+- [Evaluation](#evaluation)
+  - [PT, MT, and TL Cobb-angle computation](#pt-mt-and-tl-cobb-angle-computation)
+- [Expected Data Layout](#expected-data-layout)
+  - [Clinical-150 cohort and acquisition summary](#clinical-150-cohort-and-acquisition-summary)
+
 ## Abstract
 
 Accurate Cobb angle measurement is fundamental to scoliosis assessment and follow-up. However, standing radiographs acquired in clinical practice often retain broad anatomical coverage from the skull and shoulders to the pelvis and lower limbs. Non-spinal osseous structures may consequently produce local responses similar to those of vertebrae, destabilizing vertebral localization and subsequent angle computation. A structured multiscale sparse decoding framework is proposed for vertebral localization and Cobb angle measurement in scoliosis radiographs. The framework uses vertebral point detection as its geometric output form, introduces a centerline-guided continuous spinal-structure reference during feature decoding, and constructs multiscale vertebra-level structural features. Spinal arrangement context is combined with high-resolution local geometry to predict vertebral centers, center offsets, and corner offsets. By interpreting local osseous responses within the continuous spinal structure, the framework improves the recognition stability of vertebral structural units. The proposed method achieves 6.09% SMAPE and 1.54 deg MAE on the AASCE test set, and 5.92% overall SMAPE, 2.07 deg overall MAE, and 4.19 px 68-corner Point ED on the Clinical-150 external clinical test set, demonstrating stable vertebral point localization and Cobb angle measurement.
