@@ -197,7 +197,7 @@ The three data roles are explicit and disjoint in the public workflow:
 - `--phase train` optimizes the model on `train/` and monitors convergence on `val/`. It never constructs or reads the `test/` dataset.
 - `--phase eval` is reserved for final reporting and always reads `test/`.
 
-Validation is used to monitor whether training remains stable. It does not trigger best-epoch checkpoint selection. Training proceeds to the configured final epoch (200 in the reported experiments), `latest_model.pth` stores that final state, and test evaluation is run separately afterward.
+For the final manuscript experiments, the checkpoint with the lowest total validation loss is selected for held-out test evaluation. The shared checkpoints are named `best_model.pth`. Test data are not used for checkpoint selection. The existing public training entry point still saves `latest_model.pth` and periodic checkpoints; it does not yet implement the manuscript's best-validation checkpoint selection.
 
 ## Trained SMSD Checkpoints
 
@@ -210,8 +210,8 @@ The shared package contains two checkpoint folders:
 
 | Paper setting | Checkpoint folder | Checkpoint path |
 | --- | --- | --- |
-| `AASCE-98` | `fh_data_bs` | `weights/fh_data_bs/latest_model.pth` |
-| `Clinical-150` | `fh_data_lc` | `weights/fh_data_lc/latest_model.pth` |
+| `AASCE-98` | `fh_data_bs` | `weights/fh_data_bs/best_model.pth` |
+| `Clinical-150` | `fh_data_lc` | `weights/fh_data_lc/best_model.pth` |
 
 In other words, the `fh_data_bs` checkpoint corresponds to the `AASCE-98` setting reported in the paper, while the `fh_data_lc` checkpoint corresponds to the `Clinical-150` setting.
 
@@ -220,9 +220,9 @@ After downloading, place the files in the repository as:
 ```text
 weights/
   fh_data_bs/
-    latest_model.pth
+    best_model.pth
   fh_data_lc/
-    latest_model.pth
+    best_model.pth
 ```
 
 The HRNet-W32 backbone initializer used for training is separate from these trained SMSD checkpoints. Place `faster_rcnn_hrnetv2p_w32_mstrain_syncbn_1x.pth` directly under `weights/`; the expected file has SHA-256 `33B9A18C6C93AF3ACD92939EFBBA4D705F7B035228BD183A43B9E6208DF2E424`. Its provenance is the Faster R-CNN HRNetV2p-W32, 1x, SyncBN, multi-scale COCO checkpoint from the [official HRNet object-detection model family](https://github.com/HRNet/HRNet-Object-Detection#faster-r-cnn). The loader imports only shape-compatible backbone tensors and reports the matched, missing, ignored, and mismatched keys.
@@ -270,7 +270,7 @@ The settings used by the public training entry point are listed explicitly below
 | Training duration | 200 epochs |
 | Validation frequency | Every epoch |
 | Periodic checkpoint interval | Every 20 epochs |
-| Checkpoint used for test reporting | Final epoch-200 checkpoint; validation does not select a best epoch |
+| Checkpoint used for manuscript test reporting | Lowest total validation loss; released as `best_model.pth` |
 | Default command-line seed | 317; independent repetitions should be launched separately with recorded seeds |
 | Input size $(H\times W)$: AASCE-128/AASCE-98 | $1280\times512$ |
 | Input size $(H\times W)$: Clinical-150 | $1664\times512$ |
@@ -297,7 +297,7 @@ python main.py ^
   --output_dir outputs/train_aasce_98
 ```
 
-The reported configuration initializes HRNet-W32 from its pretrained checkpoint, as shown explicitly above. Training from scratch is still possible by omitting both pretrained-weight arguments. The training log records the three semantic objective groups for both training and validation. Checkpoints are saved periodically and at the final epoch; validation does not select a best epoch. For the five-run statistics reported in the paper, each setting is trained five times from independent initial random states, using a separate seed and separate checkpoint/output directories for every run; the epoch-200 checkpoint from each run is evaluated once and the five test results are summarized as mean and standard deviation.
+The reported configuration initializes HRNet-W32 from its pretrained checkpoint, as shown explicitly above. Training from scratch is still possible by omitting both pretrained-weight arguments. The training log records the three semantic objective groups for both training and validation. The existing public training entry point saves periodic checkpoints and `latest_model.pth`. The final manuscript instead selects the checkpoint with the lowest total validation loss for held-out testing; the shared package provides those selected weights as `best_model.pth`.
 
 ## Inference
 
@@ -320,7 +320,7 @@ Run prediction on a folder of radiographs:
 python main.py ^
   --phase predict ^
   --image_dir ../data/aasce_98/test/images ^
-  --checkpoint weights/aasce_98/model_200.pth ^
+  --checkpoint weights/fh_data_bs/best_model.pth ^
   --output_dir outputs/predict_aasce_98
 ```
 
@@ -351,7 +351,7 @@ After training is complete, run final evaluation on the held-out `test/` split:
 python main.py ^
   --phase eval ^
   --data_dir ../data/aasce_98 ^
-  --checkpoint weights/aasce_98/model_200.pth ^
+  --checkpoint weights/fh_data_bs/best_model.pth ^
   --output_dir outputs/eval_aasce_98_test
 ```
 
