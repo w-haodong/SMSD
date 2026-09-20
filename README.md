@@ -367,7 +367,7 @@ Predicted and reference landmarks use the same angle computation.
 
 | Method | Optimizer | Base LR | Batch size | Accum. steps | Weight decay | LR schedule |
 | --- | --- | --- | --- | --- | --- | --- |
-| HRNet (Baseline) | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Exponential, $\gamma=0.98$ |
+| HRNet (Baseline) | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
 | VF-LD | Adam | $1.25\times10^{-4}$ | 2 | 4 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
 | HTN | Adam | $1.25\times10^{-4}$ | 2 | 4 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
 | NFDP | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Linear, end factor $0.01$ |
