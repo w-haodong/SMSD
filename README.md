@@ -312,7 +312,7 @@ u_i&=\frac{P_i^{\mathrm{TR}}+P_i^{\mathrm{BR}}}{2}
 \frac{u_i^{\top}u_j}{\lVert u_i\rVert_2\lVert u_j\rVert_2+\varepsilon_{\theta}}
 \right]_{[0,1]},\qquad
 \theta_{ij}=\frac{180}{\pi}\arccos(\gamma_{ij}),\\
-(a,b)&=\underset{1\leq i<j\leq N}{\arg\max}\;\theta_{ij}.
+(a,b)&=\underset{1\leq i\lt j\leq N}{\arg\max}\;\theta_{ij}.
 \end{aligned}
 ```
 
