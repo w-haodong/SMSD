@@ -215,66 +215,66 @@ The sections above provide basic usage instructions. The appendix below records 
 
 #### A.1. Semantic modulation
 
-The backbone produces multiresolution features $F^{\mathrm{high}}$, $F^{\mathrm{mid}}$, and $F^{\mathrm{coarse}}$ and a semantic representation $F^{\mathrm{sem}}$. A residual depthwise block followed by a pointwise transform maps $F^{\mathrm{sem}}$ to $\widetilde F^{\mathrm{sem}}$. Global average pooling yields the context vector $v^{\mathrm{sem}}$ for coarse-feature modulation:
+The backbone produces multiresolution features $`F^{\mathrm{high}}`$, $`F^{\mathrm{mid}}`$, and $`F^{\mathrm{coarse}}`$ and a semantic representation $`F^{\mathrm{sem}}`$. A residual depthwise block followed by a pointwise transform maps $`F^{\mathrm{sem}}`$ to $`\widetilde F^{\mathrm{sem}}`$. Global average pooling yields the context vector $`v^{\mathrm{sem}}`$ for coarse-feature modulation:
 
-$$
+```math
 \begin{aligned}
 \widetilde F^{\mathrm{coarse}}
 &=\Gamma\!\left(F^{\mathrm{coarse}},F^{\mathrm{sem}}\right)\\
 &=F^{\mathrm{coarse}}\odot
 \left(\alpha_{\mathrm{mod}}+\beta_{\mathrm{mod}}\,g(v^{\mathrm{sem}})\right).
 \end{aligned}
-$$
+```
 
-Two learned pointwise projections, with SiLU between them and a final sigmoid, produce the input-dependent channel gate $g(v^{\mathrm{sem}})$. The coefficients $\alpha_{\mathrm{mod}}$ and $\beta_{\mathrm{mod}}$ are the affine offset and scale, set to 0.70 and 0.60, respectively.
+Two learned pointwise projections, with SiLU between them and a final sigmoid, produce the input-dependent channel gate $`g(v^{\mathrm{sem}})`$. The coefficients $`\alpha_{\mathrm{mod}}`$ and $`\beta_{\mathrm{mod}}`$ are the affine offset and scale, set to 0.70 and 0.60, respectively.
 
 #### A.2. Structural support and row selection
 
-For normalized horizontal coordinates $\bar x\in[-1,1]$, the predicted structural scale $s_y\in[0.035,0.24]$ determines the axial and band-support widths, indexed by $q\in\{\mathrm n,\mathrm w\}$:
+For normalized horizontal coordinates $`\bar x\in[-1,1]`$, the predicted structural scale $`s_y\in[0.035,0.24]`$ determines the axial and band-support widths, indexed by $`q\in\{\mathrm n,\mathrm w\}`$:
 
-$$
+```math
 \sigma_y^q=\mathrm{clip}\!
 \left(\alpha_\sigma^q s_y+\beta_\sigma^q,\,
 \sigma_{\min}^q,\,\sigma_{\max}^q\right).
-$$
+```
 
-Here, $\alpha_\sigma^q$ and $\beta_\sigma^q$ define the affine width mapping, and $\sigma_{\min}^q$ and $\sigma_{\max}^q$ are its bounds. The coefficient sets $(\alpha_\sigma^q,\beta_\sigma^q,\sigma_{\min}^q,\sigma_{\max}^q)$ are $(0.16,0.010,0.010,0.042)$ for $q=\mathrm n$ and $(0.26,0.016,0.026,0.070)$ for $q=\mathrm w$. The resulting width ranges are $[0.0156,0.042]$ and $[0.026,0.070]$. The support fields are
+Here, $`\alpha_\sigma^q`$ and $`\beta_\sigma^q`$ define the affine width mapping, and $`\sigma_{\min}^q`$ and $`\sigma_{\max}^q`$ are its bounds. The coefficient sets $`(\alpha_\sigma^q,\beta_\sigma^q,\sigma_{\min}^q,\sigma_{\max}^q)`$ are $`(0.16,0.010,0.010,0.042)`$ for $`q=\mathrm n`$ and $`(0.26,0.016,0.026,0.070)`$ for $`q=\mathrm w`$. The resulting width ranges are $`[0.0156,0.042]`$ and $`[0.026,0.070]`$. The support fields are
 
-$$
+```math
 S^q(y,x)=\hat\rho_y
  \exp\!\left[-\frac12\left(\frac{\bar x-\mu_y}{\sigma_y^q}\right)^2\right],
  \qquad q\in\{\mathrm n,\mathrm w\},
-$$
+```
 
-where $\mu_y$ and $\hat\rho_y$ denote the centerline position and row-level spinal support probability. The directly supervised row-validity prediction $\hat v_y$ is averaged over a three-row window, yielding $\bar v_y$, and mapped to $\hat\rho_y=\mathrm{sigmoid}[\kappa_\rho(\bar v_y-\tau_\rho)]$. The steepness coefficient $\kappa_\rho$ and midpoint $\tau_\rho$ are set to 14 and 0.52, respectively. At the image boundaries, the average uses the available rows. The coarse sparse-support field is formed by multiplying $S^{\mathrm w}$ by the row-selection support. Averaging this field over a $3\times3$ window and multiplying by the spatially broadcast $\hat\rho_y$ gives the feedback gate applied to both $S^{\mathrm n}$ and $S^{\mathrm w}$. The gated fields $\bar S^{\mathrm n}$ and $\bar S^{\mathrm w}$ provide the centerline heatmap $\hat G_{\mathrm{axis}}$ and the band support for subsequent decoding, respectively.
+where $`\mu_y`$ and $`\hat\rho_y`$ denote the centerline position and row-level spinal support probability. The directly supervised row-validity prediction $`\hat v_y`$ is averaged over a three-row window, yielding $`\bar v_y`$, and mapped to $`\hat\rho_y=\mathrm{sigmoid}[\kappa_\rho(\bar v_y-\tau_\rho)]`$. The steepness coefficient $`\kappa_\rho`$ and midpoint $`\tau_\rho`$ are set to 14 and 0.52, respectively. At the image boundaries, the average uses the available rows. The coarse sparse-support field is formed by multiplying $`S^{\mathrm w}`$ by the row-selection support. Averaging this field over a $`3\times3`$ window and multiplying by the spatially broadcast $`\hat\rho_y`$ gives the feedback gate applied to both $`S^{\mathrm n}`$ and $`S^{\mathrm w}`$. The gated fields $`\bar S^{\mathrm n}`$ and $`\bar S^{\mathrm w}`$ provide the centerline heatmap $`\hat G_{\mathrm{axis}}`$ and the band support for subsequent decoding, respectively.
 
 Row selection ranks learned support scores using the retention ratios in [Table A.1](#appendix-table-a1). A straight-through mask enables back-propagation through the continuous scores. Five-row dilation and continuity filtering regularize the selected span.
 
 #### A.3. Corridor aggregation and longitudinal attention
 
-Each corridor $q\in\{\mathrm n,\mathrm w\}$ samples $N_s$ uniformly spaced offsets $\xi_s\in[-1,1]$:
+Each corridor $`q\in\{\mathrm n,\mathrm w\}`$ samples $`N_s`$ uniformly spaced offsets $`\xi_s\in[-1,1]`$:
 
-$$
+```math
 x_{y,s}^q=\mu_y+\xi_s\omega_y^q,
 \qquad
 \omega_y^q=\kappa_q\sigma_y^{\mathrm w}.
-$$
+```
 
-The sample count is $N_s=17$, with scale factors $\kappa_{\mathrm n}=1$ and $\kappa_{\mathrm w}=1.70$. The narrow and wide sampling half-ranges are $[0.026,0.070]$ and $[0.0442,0.119]$, respectively. Coordinates are clamped to $[-1,1]$; features and support maps are sampled bilinearly with border padding and aligned corners.
+The sample count is $`N_s=17`$, with scale factors $`\kappa_{\mathrm n}=1`$ and $`\kappa_{\mathrm w}=1.70`$. The narrow and wide sampling half-ranges are $`[0.026,0.070]`$ and $`[0.0442,0.119]`$, respectively. Coordinates are clamped to $`[-1,1]`$; features and support maps are sampled bilinearly with border padding and aligned corners.
 
-A shared pointwise projection $w^\top f_{y,s}^q$ scores the sampled appearance features. The corridor prior $A$ is obtained by spatially aligning the coarse sparse-support field, averaging it over a $5\times3$ window, and weighting it by the broadcast $\hat\rho_y$. Let $B_{y,s}^q$ denote the sampled gated band support $\bar S^{\mathrm w}$ and $A_{y,s}^q$ the sampled corridor prior. Their contributions to corridor scoring are
+A shared pointwise projection $`w^\top f_{y,s}^q`$ scores the sampled appearance features. The corridor prior $`A`$ is obtained by spatially aligning the coarse sparse-support field, averaging it over a $`5\times3`$ window, and weighting it by the broadcast $`\hat\rho_y`$. Let $`B_{y,s}^q`$ denote the sampled gated band support $`\bar S^{\mathrm w}`$ and $`A_{y,s}^q`$ the sampled corridor prior. Their contributions to corridor scoring are
 
-$$
+```math
 b_{y,s}^{q}=\beta_q B_{y,s}^{q}+(1-\beta_q)A_{y,s}^{q}.
-$$
+```
 
-The narrow and wide prior weights, $\beta_{\mathrm n}$ and $\beta_{\mathrm w}$, are set to 0.62 and 0.66, respectively. The sum of visual and structural scores is normalized by a softmax over the horizontal samples within each row. The weighted feature sum forms the row's corridor token.
+The narrow and wide prior weights, $`\beta_{\mathrm n}`$ and $`\beta_{\mathrm w}`$, are set to 0.62 and 0.66, respectively. The sum of visual and structural scores is normalized by a softmax over the horizontal samples within each row. The weighted feature sum forms the row's corridor token.
 
-Coarse and corridor tokens undergo policy-weighted attention over the complete longitudinal sequence, with diagonal self-access retained. The attention output passes through layer normalization and a feed-forward block comprising $C\rightarrow2C$, GELU, dropout, and $2C\rightarrow C$ projections. Token dimensions, attention heads, and dropout rates are listed in [Table A.1](#appendix-table-a1).
+Coarse and corridor tokens undergo policy-weighted attention over the complete longitudinal sequence, with diagonal self-access retained. The attention output passes through layer normalization and a feed-forward block comprising $`C\rightarrow2C`$, GELU, dropout, and $`2C\rightarrow C`$ projections. Token dimensions, attention heads, and dropout rates are listed in [Table A.1](#appendix-table-a1).
 
 #### A.4. Multiscale feature fusion
 
-The propagated narrow and wide tokens use the fusion weight $\eta=0.25$; their selection supports are combined with weights 0.60 and 0.40. The fused tokens are projected onto the two-dimensional centerline neighborhood and concatenated with the mid-scale appearance feature and the aligned coarse feature. A pointwise projection followed by two residual depthwise blocks performs spatial fusion, with structural support gating the residual update.
+The propagated narrow and wide tokens use the fusion weight $`\eta=0.25`$; their selection supports are combined with weights 0.60 and 0.40. The fused tokens are projected onto the two-dimensional centerline neighborhood and concatenated with the mid-scale appearance feature and the aligned coarse feature. A pointwise projection followed by two residual depthwise blocks performs spatial fusion, with structural support gating the residual update.
 
 At high resolution, the aligned structural prior weights the appearance scores used to rank candidate locations. Attention is applied to the selected candidates, and the updated features are returned to their spatial positions through a gated residual. [Table A.1](#appendix-table-a1) gives the candidate retention ratio and minimum count.
 
@@ -292,19 +292,19 @@ At high resolution, the aligned structural prior weights the appearance scores u
 
 #### A.5. Loss weights
 
-The coefficients $\lambda_{\mathrm{hm}}$, $\lambda_{\mathrm{ctr}}$, $\lambda_{\mathrm{crn}}$, $\lambda_{\mathrm{cl}}$, and $\lambda_{\mathrm{row}}$ for center-heatmap, center-offset, corner-offset, centerline, and row-support supervision are set to 1.00, 1.00, 0.10, 0.40, and 0.10, respectively. The first three coefficients weight the components of $\mathcal L_{\mathrm{det}}$, while the last two control centerline and row-support supervision.
+The coefficients $`\lambda_{\mathrm{hm}}`$, $`\lambda_{\mathrm{ctr}}`$, $`\lambda_{\mathrm{crn}}`$, $`\lambda_{\mathrm{cl}}`$, and $`\lambda_{\mathrm{row}}`$ for center-heatmap, center-offset, corner-offset, centerline, and row-support supervision are set to 1.00, 1.00, 0.10, 0.40, and 0.10, respectively. The first three coefficients weight the components of $`\mathcal L_{\mathrm{det}}`$, while the last two control centerline and row-support supervision.
 
 ### Appendix B. Landmark Decoding and Cobb-Angle Computation
 
 #### B.1. Landmark decoding
 
-The proposed decoder applies $3\times3$ local-maximum suppression, constructs a pool of 32 center candidates, prioritizes candidates with confidence at least $0.05$, and returns 17 responses. The center-offset field is added to each candidate location; the ordered corner-offset vectors are subtracted from the decoded center. The corner order is top-left, top-right, bottom-left, and bottom-right. Image-resizing and padding transforms are inverted before geometric evaluation. The quadrilaterals are ordered by mean vertical position to assign T1--T12 followed by L1--L5.
+The proposed decoder applies $`3\times3`$ local-maximum suppression, constructs a pool of 32 center candidates, prioritizes candidates with confidence at least $`0.05`$, and returns 17 responses. The center-offset field is added to each candidate location; the ordered corner-offset vectors are subtracted from the decoded center. The corner order is top-left, top-right, bottom-left, and bottom-right. Image-resizing and padding transforms are inverted before geometric evaluation. The quadrilaterals are ordered by mean vertical position to assign T1--T12 followed by L1--L5.
 
 #### B.2. Cobb-angle computation
 
-Let $N=17$ and let $P_i^{\mathrm{TL}}$, $P_i^{\mathrm{TR}}$, $P_i^{\mathrm{BL}}$, and $P_i^{\mathrm{BR}}$ denote the ordered corners of vertebra $i$ in either a decoded or reference landmark set. We represent its transverse orientation by the vector joining the midpoints of its left and right edges. The pairwise angle used by the adopted evaluation rule and the dominant end-vertebra pair are
+Let $`N=17`$ and let $`P_i^{\mathrm{TL}}`$, $`P_i^{\mathrm{TR}}`$, $`P_i^{\mathrm{BL}}`$, and $`P_i^{\mathrm{BR}}`$ denote the ordered corners of vertebra $`i`$ in either a decoded or reference landmark set. We represent its transverse orientation by the vector joining the midpoints of its left and right edges. The pairwise angle used by the adopted evaluation rule and the dominant end-vertebra pair are
 
-$$
+```math
 \begin{aligned}
 u_i&=\frac{P_i^{\mathrm{TR}}+P_i^{\mathrm{BR}}}{2}
 -\frac{P_i^{\mathrm{TL}}+P_i^{\mathrm{BL}}}{2},\\
@@ -314,14 +314,14 @@ u_i&=\frac{P_i^{\mathrm{TR}}+P_i^{\mathrm{BR}}}{2}
 \theta_{ij}=\frac{180}{\pi}\arccos(\gamma_{ij}),\\
 (a,b)&=\underset{1\leq i<j\leq N}{\arg\max}\;\theta_{ij}.
 \end{aligned}
-$$
+```
 
-Here, $\varepsilon_{\theta}>0$ stabilizes the denominator and $[t]_{[0,1]}=\min\{1,\max\{0,t\}\}$. The pair $(a,b)$ identifies the dominant curve's end vertebrae in cranial order. Curve assignment uses the endplate-midpoint trace
-$z_{2i-1}=(P_i^{\mathrm{TL}}+P_i^{\mathrm{TR}})/2$ and
-$z_{2i}=(P_i^{\mathrm{BL}}+P_i^{\mathrm{BR}})/2$.
-Let $\Delta=(\Delta_x,\Delta_y)=z_1-z_{2N}$. For the trace positions used by the adopted evaluation rule, the normalized trace statistic and the curve-assignment indicator are
+Here, $`\varepsilon_{\theta}>0`$ stabilizes the denominator and $`[t]_{[0,1]}=\min\{1,\max\{0,t\}\}`$. The pair $`(a,b)`$ identifies the dominant curve's end vertebrae in cranial order. Curve assignment uses the endplate-midpoint trace
+$`z_{2i-1}=(P_i^{\mathrm{TL}}+P_i^{\mathrm{TR}})/2`$ and
+$`z_{2i}=(P_i^{\mathrm{BL}}+P_i^{\mathrm{BR}})/2`$.
+Let $`\Delta=(\Delta_x,\Delta_y)=z_1-z_{2N}`$. For the trace positions used by the adopted evaluation rule, the normalized trace statistic and the curve-assignment indicator are
 
-$$
+```math
 \begin{aligned}
 d_k&=\frac{(z_{k,y}-z_{2N,y})\Delta_y}{\Delta_y^2+\varepsilon_d}
 -\frac{(z_{k,x}-z_{2N,x})\Delta_x}{\Delta_x^2+\varepsilon_d},
@@ -330,22 +330,22 @@ D_+&=\sum_k\max(d_k,0),\qquad
 D_-=\sum_k\max(-d_k,0),\qquad
 \chi=\mathbf 1\!\left(4D_+D_-\geq\tau\right).
 \end{aligned}
-$$
+```
 
-Here, $\varepsilon_d>0$ stabilizes the statistic, $\tau$ is a numerical tolerance, and $\chi$ selects between the two curve-assignment cases below. For $\chi=0$, the dominant pair defines the main thoracic (MT) angle, with cranial and caudal connections defining the proximal thoracic (PT) and thoracolumbar/lumbar (TL) angles:
+Here, $`\varepsilon_d>0`$ stabilizes the statistic, $`\tau`$ is a numerical tolerance, and $`\chi`$ selects between the two curve-assignment cases below. For $`\chi=0`$, the dominant pair defines the main thoracic (MT) angle, with cranial and caudal connections defining the proximal thoracic (PT) and thoracolumbar/lumbar (TL) angles:
 
-$$
+```math
 \bigl(C_{\mathrm{PT}},C_{\mathrm{MT}},C_{\mathrm{TL}}\bigr)
 =\bigl(\theta_{1a},\theta_{ab},\theta_{bN}\bigr).
-$$
+```
 
-For $\chi=1$, adjacent angular maxima are sought on either side of the dominant pair. Let
-$a_0=\arg\max_{1\leq i\leq a}\theta_{ia}$,
-$b_0=\arg\max_{b\leq j\leq N}\theta_{bj}$, and
-$a_1=\arg\max_{1\leq i\leq a_0}\theta_{i a_0}$.
-Let $T_i=(P_i^{\mathrm{TL}}+P_i^{\mathrm{TR}})/2$ be the upper-endplate midpoint, and let $y_{\min}$ and $y_{\max}$ be the minimum and maximum vertical coordinates over all corners in the current landmark set. The mean vertical location of the dominant pair is compared with the midpoint of this range. A cranial dominant pair is assigned to MT, with the neighboring maxima defining PT and TL; a caudal dominant pair is assigned to TL, and the two successive cranial maxima define MT and PT. Accordingly,
+For $`\chi=1`$, adjacent angular maxima are sought on either side of the dominant pair. Let
+$`a_0=\arg\max_{1\leq i\leq a}\theta_{ia}`$,
+$`b_0=\arg\max_{b\leq j\leq N}\theta_{bj}`$, and
+$`a_1=\arg\max_{1\leq i\leq a_0}\theta_{i a_0}`$.
+Let $`T_i=(P_i^{\mathrm{TL}}+P_i^{\mathrm{TR}})/2`$ be the upper-endplate midpoint, and let $`y_{\min}`$ and $`y_{\max}`$ be the minimum and maximum vertical coordinates over all corners in the current landmark set. The mean vertical location of the dominant pair is compared with the midpoint of this range. A cranial dominant pair is assigned to MT, with the neighboring maxima defining PT and TL; a caudal dominant pair is assigned to TL, and the two successive cranial maxima define MT and PT. Accordingly,
 
-$$
+```math
 \bigl(C_{\mathrm{PT}},C_{\mathrm{MT}},C_{\mathrm{TL}}\bigr)=
 \begin{cases}
 (\theta_{a_0a},\theta_{ab},\theta_{bb_0}),
@@ -353,7 +353,7 @@ $$
 (\theta_{a_1a_0},\theta_{a_0a},\theta_{ab}),
 & \text{otherwise},
 \end{cases}
-$$
+```
 
 Predicted and reference landmarks use the same angle computation.
 
@@ -367,16 +367,16 @@ Predicted and reference landmarks use the same angle computation.
 
 | Method | Optimizer | Base LR | Batch size | Accum. steps | Weight decay | LR schedule |
 | --- | --- | --- | --- | --- | --- | --- |
-| HRNet (Baseline) | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| VF-LD | Adam | $1.25\times10^{-4}$ | 2 | 4 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| HTN | Adam | $1.25\times10^{-4}$ | 2 | 4 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| NFDP | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Linear, end factor $0.01$ |
-| MedSAM | Adam | $1.25\times10^{-4}$ | 2 | 4 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| VMamba | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| DINOv3 | Adam | $1.25\times10^{-4}$ | 2 | 4 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| BiSS-Net | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
-| MedSapiens | Adam | $5\times10^{-4}$ | 1 | 1 | 0.1 | Warm-up + multi-step |
-| Ours | Adam | $1.25\times10^{-4}$ | 2 | 1 | $1\times10^{-4}$ | Exponential, $\gamma=0.96$ |
+| HRNet (Baseline) | Adam | $`1.25\times10^{-4}`$ | 2 | 1 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| VF-LD | Adam | $`1.25\times10^{-4}`$ | 2 | 4 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| HTN | Adam | $`1.25\times10^{-4}`$ | 2 | 4 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| NFDP | Adam | $`1.25\times10^{-4}`$ | 2 | 1 | $`1\times10^{-4}`$ | Linear, end factor $`0.01`$ |
+| MedSAM | Adam | $`1.25\times10^{-4}`$ | 2 | 4 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| VMamba | Adam | $`1.25\times10^{-4}`$ | 2 | 1 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| DINOv3 | Adam | $`1.25\times10^{-4}`$ | 2 | 4 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| BiSS-Net | Adam | $`1.25\times10^{-4}`$ | 2 | 1 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
+| MedSapiens | Adam | $`5\times10^{-4}`$ | 1 | 1 | 0.1 | Warm-up + multi-step |
+| Ours | Adam | $`1.25\times10^{-4}`$ | 2 | 1 | $`1\times10^{-4}`$ | Exponential, $`\gamma=0.96`$ |
 
 ## Compared Methods and GitHub Repositories
 
